@@ -16,10 +16,54 @@
 
 package io.quarkus.gizmo;
 
+import static io.quarkus.gizmo.MethodDescriptor.ofConstructor;
+import static io.quarkus.gizmo.MethodDescriptor.ofMethod;
+
+import java.io.File;
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+import java.util.List;
+
 import org.junit.Assert;
 import org.junit.Test;
 
 public class SampleTest {
+
+    private static final String JAVA_LIBRARY_PATH = "java.library.path";
+    private List<JavaLibraryPathAdditionalPathBuildItem> javaLibraryPathAdditionalPaths = new ArrayList<JavaLibraryPathAdditionalPathBuildItem>();
+
+    @Test
+    public void scrach() throws ClassNotFoundException {
+
+        javaLibraryPathAdditionalPaths.add(new JavaLibraryPathAdditionalPathBuildItem("path1"));
+        javaLibraryPathAdditionalPaths.add(new JavaLibraryPathAdditionalPathBuildItem("path2"));
+
+        TestClassLoader cl = new TestClassLoader(getClass().getClassLoader());
+        try (ClassCreator creator = ClassCreator.builder().classOutput(cl).className("com.Real").interfaces(MyInterface.class).build()) {
+
+            MethodCreator mv = creator.getMethodCreator("doStart", void.class, String[].class);
+            mv.setModifiers(Modifier.PROTECTED | Modifier.FINAL);
+
+
+            ResultHandle javaLibraryPath = mv.newInstance(ofConstructor(StringBuilder.class, String.class),
+                  mv.invokeStaticMethod(ofMethod(System.class, "getProperty", String.class, String.class), mv.load(JAVA_LIBRARY_PATH)));
+            for (JavaLibraryPathAdditionalPathBuildItem javaLibraryPathAdditionalPath : javaLibraryPathAdditionalPaths) {
+                ResultHandle javaLibraryPathLength = mv.invokeVirtualMethod(ofMethod(StringBuilder.class, "length", int.class), javaLibraryPath);
+                mv.ifNonZero(javaLibraryPathLength).trueBranch()
+                      .invokeVirtualMethod(ofMethod(StringBuilder.class, "append", StringBuilder.class, String.class), javaLibraryPath, mv.load(File.pathSeparator));
+                mv.invokeVirtualMethod(ofMethod(StringBuilder.class, "append", StringBuilder.class, String.class), javaLibraryPath,
+                      mv.load(javaLibraryPathAdditionalPath.getPath()));
+            }
+            mv.invokeStaticMethod(ofMethod(System.class, "setProperty", String.class, String.class, String.class),
+                  mv.load(JAVA_LIBRARY_PATH), mv.invokeVirtualMethod(ofMethod(StringBuilder.class, "toString", String.class), javaLibraryPath));
+        }
+
+        Class<?> clazz = cl.loadClass("com.Real");
+        Assert.assertTrue(clazz.isSynthetic());
+
+    }
+
+    //TODO add a test for package
 
     @Test
     public void testSimpleGetMessage() throws Exception {
